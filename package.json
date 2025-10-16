@@ -4,17 +4,18 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview",
+    "preview": "vite preview --host",
     "server": "tsx server.ts",
-    "dev:full": "concurrently \"npm run dev\" \"npm run server\""
+    "dev:full": "concurrently \"npm run dev\" \"npm run server\"",
+    "preview:full": "concurrently \"npm run preview\" \"npm run server\"",
+    "start": "npm run build && npm run preview:full"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^5.1.0",
-    "https": "^1.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "web-push": "^3.6.7"
@@ -27,7 +28,6 @@
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
     "@types/web-push": "^3.6.4",
-    "@vite-pwa/assets-generator": "^0.2.6",
     "@vitejs/plugin-react": "^4.2.1",
     "concurrently": "^9.2.1",
     "eslint": "^9.18.0",
@@ -44,9 +44,5 @@
     "workbox-routing": "^7.3.0",
     "workbox-strategies": "^7.3.0",
     "workbox-window": "^7.3.0"
-  },
-  "resolutions": {
-    "sharp": "0.32.6",
-    "sharp-ico": "0.1.5"
   }
 }

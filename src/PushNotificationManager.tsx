@@ -4,8 +4,26 @@ interface NotificationManagerProps {
   serverUrl?: string;
 }
 
+// Function to get the appropriate server URL based on environment
+function getServerUrl(): string {
+  const isHTTPS = window.location.protocol === "https:";
+  const port = isHTTPS ? "443" : "3001";
+  const protocol = isHTTPS ? "https:" : "http:";
+
+  // If we're running on localhost, use localhost
+  if (
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1"
+  ) {
+    return `${protocol}//localhost:${port}`;
+  }
+
+  // If we're running on the network, use the same hostname and protocol
+  return `${protocol}//${window.location.hostname}:${port}`;
+}
+
 const PushNotificationManager: React.FC<NotificationManagerProps> = ({
-  serverUrl = "http://localhost:3001",
+  serverUrl = getServerUrl(),
 }) => {
   const [isSupported, setIsSupported] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
@@ -18,12 +36,28 @@ const PushNotificationManager: React.FC<NotificationManagerProps> = ({
 
   const getVapidKey = useCallback(async () => {
     try {
-      const response = await fetch(`${serverUrl}/api/vapid-key`);
+      console.log(`🔍 Fetching VAPID key from: ${serverUrl}/api/vapid-key`);
+
+      const response = await fetch(`${serverUrl}/api/vapid-key`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
       const data = await response.json();
+      console.log("✅ VAPID key received:", data.publicKey);
       setVapidPublicKey(data.publicKey);
+      setMessage("VAPID key loaded successfully");
     } catch (error) {
-      console.error("Error getting VAPID key:", error);
-      setMessage("Error getting VAPID key");
+      console.error("❌ Error getting VAPID key:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      setMessage(`Failed to get VAPID key: ${errorMessage}`);
     }
   }, [serverUrl]);
 
@@ -38,13 +72,11 @@ const PushNotificationManager: React.FC<NotificationManagerProps> = ({
 
   const checkSubscriptionStatus = async () => {
     try {
-      const registration = await navigator.serviceWorker.ready;
-      const existingSubscription =
-        await registration.pushManager.getSubscription();
-
-      if (existingSubscription) {
-        setSubscription(existingSubscription);
-        setIsSubscribed(true);
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration) {
+        const sub = await registration.pushManager.getSubscription();
+        setSubscription(sub);
+        setIsSubscribed(!!sub);
       }
     } catch (error) {
       console.error("Error checking subscription status:", error);
@@ -61,14 +93,14 @@ const PushNotificationManager: React.FC<NotificationManagerProps> = ({
     setMessage("");
 
     try {
-      const registration = await navigator.serviceWorker.ready;
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (!registration) {
+        throw new Error("Service worker not registered");
+      }
 
-      // Convert VAPID key to Uint8Array
-      const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
-
-      const newSubscription = await registration.pushManager.subscribe({
+      const sub = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: applicationServerKey,
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
       });
 
       // Send subscription to server
@@ -77,19 +109,23 @@ const PushNotificationManager: React.FC<NotificationManagerProps> = ({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(newSubscription),
+        body: JSON.stringify(sub),
       });
 
       if (response.ok) {
-        setSubscription(newSubscription);
+        setSubscription(sub);
         setIsSubscribed(true);
         setMessage("Successfully subscribed to push notifications!");
       } else {
-        throw new Error("Failed to subscribe");
+        throw new Error("Failed to save subscription");
       }
     } catch (error) {
       console.error("Error subscribing to push notifications:", error);
-      setMessage("Failed to subscribe to push notifications");
+      setMessage(
+        `Failed to subscribe: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
     } finally {
       setIsLoading(false);
     }
@@ -102,16 +138,15 @@ const PushNotificationManager: React.FC<NotificationManagerProps> = ({
     setMessage("");
 
     try {
-      // Unsubscribe from push manager
       await subscription.unsubscribe();
 
-      // Notify server
+      // Remove subscription from server
       await fetch(`${serverUrl}/api/unsubscribe`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(subscription),
+        body: JSON.stringify({ endpoint: subscription.endpoint }),
       });
 
       setSubscription(null);
@@ -119,7 +154,11 @@ const PushNotificationManager: React.FC<NotificationManagerProps> = ({
       setMessage("Successfully unsubscribed from push notifications");
     } catch (error) {
       console.error("Error unsubscribing from push notifications:", error);
-      setMessage("Failed to unsubscribe from push notifications");
+      setMessage(
+        `Failed to unsubscribe: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
     } finally {
       setIsLoading(false);
     }
@@ -128,10 +167,7 @@ const PushNotificationManager: React.FC<NotificationManagerProps> = ({
   const sendTestNotification = async () => {
     try {
       const response = await fetch(`${serverUrl}/api/test-notification`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        method: "GET",
       });
 
       if (response.ok) {
@@ -141,96 +177,119 @@ const PushNotificationManager: React.FC<NotificationManagerProps> = ({
       }
     } catch (error) {
       console.error("Error sending test notification:", error);
-      setMessage("Failed to send test notification");
+      setMessage(
+        `Failed to send test notification: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
     }
   };
 
-  const urlBase64ToUint8Array = (base64String: string): ArrayBuffer => {
+  // Convert VAPID key to Uint8Array
+  const urlBase64ToUint8Array = (base64String: string) => {
     const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
     const base64 = (base64String + padding)
       .replace(/-/g, "+")
       .replace(/_/g, "/");
-
     const rawData = window.atob(base64);
     const outputArray = new Uint8Array(rawData.length);
-
     for (let i = 0; i < rawData.length; ++i) {
       outputArray[i] = rawData.charCodeAt(i);
     }
-    return outputArray.buffer;
+    return outputArray;
   };
 
   if (!isSupported) {
     return (
-      <div className="push-notification-manager">
-        <h3>Push Notifications</h3>
+      <div style={{ padding: "20px", textAlign: "center" }}>
         <p>Push notifications are not supported in this browser.</p>
       </div>
     );
   }
 
   return (
-    <div className="push-notification-manager">
-      <h3>Push Notifications</h3>
-
-      <div className="subscription-status">
-        <p>Status: {isSubscribed ? "✅ Subscribed" : "❌ Not subscribed"}</p>
-        {subscription && (
-          <details>
-            <summary>Subscription Details</summary>
-            <pre>{JSON.stringify(subscription, null, 2)}</pre>
-          </details>
-        )}
-      </div>
-
-      <div className="controls">
-        {!isSubscribed ? (
-          <button
-            onClick={subscribeToPush}
-            disabled={isLoading || !vapidPublicKey}
-            className="subscribe-btn"
-          >
-            {isLoading ? "Subscribing..." : "Subscribe to Push Notifications"}
-          </button>
-        ) : (
-          <div className="subscribed-controls">
-            <button
-              onClick={unsubscribeFromPush}
-              disabled={isLoading}
-              className="unsubscribe-btn"
-            >
-              {isLoading ? "Unsubscribing..." : "Unsubscribe"}
-            </button>
-            <button onClick={sendTestNotification} className="test-btn">
-              Send Test Notification
-            </button>
-          </div>
-        )}
-      </div>
+    <div style={{ padding: "20px", textAlign: "center" }}>
+      <h2>Push Notifications</h2>
 
       {message && (
         <div
-          className={`message ${
-            message.includes("Error") || message.includes("Failed")
-              ? "error"
-              : "success"
-          }`}
+          style={{
+            margin: "10px 0",
+            padding: "10px",
+            backgroundColor:
+              message.includes("Error") || message.includes("Failed")
+                ? "#fee"
+                : "#efe",
+            border: `1px solid ${
+              message.includes("Error") || message.includes("Failed")
+                ? "#fcc"
+                : "#cfc"
+            }`,
+            borderRadius: "4px",
+          }}
         >
           {message}
         </div>
       )}
 
-      <div className="info">
-        <h4>How to test:</h4>
-        <ol>
-          <li>Click "Subscribe to Push Notifications"</li>
-          <li>Allow notifications when prompted</li>
-          <li>Click "Send Test Notification" to test</li>
-          <li>
-            Or use the server API directly:{" "}
-            <code>POST {serverUrl}/api/send-notification</code>
-          </li>
-        </ol>
+      <div style={{ margin: "20px 0" }}>
+        {isSubscribed ? (
+          <div>
+            <p>✅ You are subscribed to push notifications!</p>
+            <button
+              onClick={unsubscribeFromPush}
+              disabled={isLoading}
+              style={{
+                padding: "10px 20px",
+                margin: "5px",
+                backgroundColor: "#dc3545",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer",
+              }}
+            >
+              {isLoading ? "Unsubscribing..." : "Unsubscribe"}
+            </button>
+            <button
+              onClick={sendTestNotification}
+              style={{
+                padding: "10px 20px",
+                margin: "5px",
+                backgroundColor: "#17a2b8",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer",
+              }}
+            >
+              Send Test Notification
+            </button>
+          </div>
+        ) : (
+          <div>
+            <p>Subscribe to receive push notifications</p>
+            <button
+              onClick={subscribeToPush}
+              disabled={isLoading || !vapidPublicKey}
+              style={{
+                padding: "10px 20px",
+                backgroundColor: "#28a745",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer",
+              }}
+            >
+              {isLoading ? "Subscribing..." : "Subscribe to Notifications"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div style={{ fontSize: "12px", color: "#666", marginTop: "20px" }}>
+        <p>Server: {serverUrl}</p>
+        <p>VAPID Key: {vapidPublicKey ? "✅ Loaded" : "❌ Not loaded"}</p>
       </div>
     </div>
   );

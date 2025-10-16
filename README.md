@@ -1,50 +1,87 @@
-# React + TypeScript + Vite
+# PWA Simple App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A simple Progressive Web App (PWA) with installation support and push notifications.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- ✅ PWA installation prompt for Android and iOS
+- ✅ Push notifications with VAPID keys
+- ✅ Service worker with Workbox
+- ✅ Responsive design
+- ✅ Network accessible (works on mobile devices)
 
-## Expanding the ESLint configuration
+## Quick Start
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+1. **Install dependencies:**
 
-- Configure the top-level `parserOptions` property like this:
+   ```bash
+   pnpm install
+   ```
 
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
+2. **Start development server:**
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+   ```bash
+   pnpm run dev:full
+   ```
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
+   This starts both the Vite dev server and the push notification server.
 
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
-```
+3. **Build and preview:**
+   ```bash
+   pnpm run build
+   pnpm run preview:full
+   ```
+
+## Available Scripts
+
+- `pnpm run dev` - Start Vite dev server only
+- `pnpm run dev:full` - Start both dev server and push notification server
+- `pnpm run build` - Build the app
+- `pnpm run preview` - Preview the built app
+- `pnpm run preview:full` - Preview with push notification server
+- `pnpm run server` - Start push notification server only
+- `pnpm run start` - Build and start in production mode
+
+## PWA Installation
+
+### Android
+
+- The app will show an install prompt automatically
+- Or use the floating install button
+
+### iOS
+
+- Tap the Share button 📤
+- Scroll down and tap "Add to Home Screen" ➕
+- Tap "Add" to confirm
+
+## Push Notifications
+
+The app includes a push notification system:
+
+1. **Server:** Runs on port 3001 by default
+2. **VAPID Keys:** Auto-generated for development
+3. **Test:** Use the "Send Test Notification" button
+
+## Network Access
+
+The app is configured to work on your local network:
+
+- Dev server: `http://YOUR_IP:5173`
+- Preview server: `http://YOUR_IP:4173`
+- Push server: `http://YOUR_IP:3001`
+
+## Production
+
+For production deployment:
+
+1. Set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` environment variables
+2. Update the server URL in `PushNotificationManager.tsx`
+3. Deploy both the built app and the server
+
+## Tech Stack
+
+- **Frontend:** React + TypeScript + Vite
+- **PWA:** vite-plugin-pwa + Workbox
+- **Backend:** Express + web-push
+- **Styling:** CSS

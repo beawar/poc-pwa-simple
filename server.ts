@@ -1,10 +1,12 @@
 import cors from "cors";
 import express, { Request, Response } from "express";
-import path from "path";
 import webpush from "web-push";
+import fs from "fs";
+import path from "path";
+import https from "https";
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT) || 3001;
 
 // Types
 interface VapidKeys {
@@ -26,38 +28,6 @@ interface NotificationPayload {
   icon: string;
   badge: string;
   data: Record<string, unknown>;
-  actions: Array<{
-    action: string;
-    title: string;
-    icon: string;
-  }>;
-  vibrate: number[];
-  requireInteraction: boolean;
-  silent: boolean;
-}
-
-interface NotificationRequest {
-  title?: string;
-  body?: string;
-  icon?: string;
-  badge?: string;
-  data?: Record<string, unknown>;
-  actions?: Array<{
-    action: string;
-    title: string;
-    icon: string;
-  }>;
-}
-
-interface SendNotificationResponse {
-  success: boolean;
-  sent: number;
-  total: number;
-  results: Array<{
-    success: boolean;
-    endpoint: string;
-    error?: string;
-  }>;
 }
 
 interface HealthResponse {
@@ -71,198 +41,119 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static("dist"));
 
-// VAPID keys (in production, store these securely)
+// VAPID keys (replace with your generated keys)
 const vapidKeys: VapidKeys = {
-  publicKey:
-    "BApAxCNXN8M23-2wnDJM46ABlNH5e32WGL1hyIamiA4090g45Thrpim8HdgT0PtW8BQE3B8eTRm-b0oKIT4DV4E",
-  privateKey: "lUvoxCVKXaP1WzLX2k527gw4yPR9tmgH2-LRZFOiK1A",
+  publicKey: process.env.VAPID_PUBLIC_KEY || "YOUR_VAPID_PUBLIC_KEY",
+  privateKey: process.env.VAPID_PRIVATE_KEY || "YOUR_VAPID_PRIVATE_KEY",
 };
 
-// Configure web-push
+if (vapidKeys.publicKey === "YOUR_VAPID_PUBLIC_KEY") {
+  console.warn(
+    "⚠️  VAPID keys are not set. Generating new ones for development."
+  );
+  const newVapidKeys = webpush.generateVAPIDKeys();
+  vapidKeys.publicKey = newVapidKeys.publicKey;
+  vapidKeys.privateKey = newVapidKeys.privateKey;
+  console.warn(
+    `   New Public Key: ${vapidKeys.publicKey}\n   New Private Key: ${vapidKeys.privateKey}`
+  );
+  console.warn(
+    "   Please set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY environment variables in production."
+  );
+}
+
 webpush.setVapidDetails(
-  "mailto:your-email@example.com",
+  "mailto:example@example.com",
   vapidKeys.publicKey,
   vapidKeys.privateKey
 );
 
-// Store subscriptions (in production, use a database)
 const subscriptions: PushSubscription[] = [];
 
 // Routes
-app.get("/", (req: Request, res: Response) => {
-  res.sendFile(path.join(__dirname, "dist", "index.html"));
-});
-
-// Get VAPID public key
 app.get("/api/vapid-key", (req: Request, res: Response) => {
   res.json({ publicKey: vapidKeys.publicKey });
 });
 
-// Subscribe to push notifications
 app.post("/api/subscribe", (req: Request, res: Response) => {
   const subscription: PushSubscription = req.body;
-
-  if (!subscription || !subscription.endpoint) {
-    return res.status(400).json({ error: "Invalid subscription" });
-  }
-
-  // Check if subscription already exists
-  const existingIndex = subscriptions.findIndex(
-    (sub) => sub.endpoint === subscription.endpoint
-  );
-
-  if (existingIndex >= 0) {
-    subscriptions[existingIndex] = subscription;
-  } else {
-    subscriptions.push(subscription);
-  }
-
-  console.log("New subscription added:", subscription.endpoint);
-  res.json({ success: true, count: subscriptions.length });
+  subscriptions.push(subscription);
+  console.log("✅ Subscription received:", subscription);
+  res.status(201).json({ message: "Subscription received" });
 });
 
-// Unsubscribe from push notifications
 app.post("/api/unsubscribe", (req: Request, res: Response) => {
-  const subscription: PushSubscription = req.body;
-
-  if (!subscription || !subscription.endpoint) {
-    return res.status(400).json({ error: "Invalid subscription" });
+  const { endpoint } = req.body;
+  const index = subscriptions.findIndex((sub) => sub.endpoint === endpoint);
+  if (index > -1) {
+    subscriptions.splice(index, 1);
+    console.log("❌ Subscription removed:", endpoint);
+    res.status(200).json({ message: "Subscription removed" });
+  } else {
+    res.status(404).json({ message: "Subscription not found" });
   }
+});
 
-  const index = subscriptions.findIndex(
-    (sub) => sub.endpoint === subscription.endpoint
+app.post("/api/send-notification", async (req: Request, res: Response) => {
+  const payload: NotificationPayload = req.body;
+  console.log("Sending notification with payload:", payload);
+
+  const notificationPromises = subscriptions.map((subscription) =>
+    webpush
+      .sendNotification(subscription, JSON.stringify(payload))
+      .catch((error) => {
+        console.error("Error sending notification:", error);
+        // Remove invalid subscriptions
+        if (error.statusCode === 410) {
+          const index = subscriptions.findIndex(
+            (sub) => sub.endpoint === subscription.endpoint
+          );
+          if (index > -1) {
+            subscriptions.splice(index, 1);
+            console.log("Removed expired subscription:", subscription.endpoint);
+          }
+        }
+        return { endpoint: subscription.endpoint, error: error.message };
+      })
   );
 
-  if (index >= 0) {
-    subscriptions.splice(index, 1);
-    console.log("Subscription removed:", subscription.endpoint);
-    res.json({ success: true, count: subscriptions.length });
+  const results = await Promise.allSettled(notificationPromises);
+  const failed = results.filter(
+    (result) =>
+      result.status === "rejected" ||
+      (result.status === "fulfilled" && result.value && result.value.error)
+  );
+
+  if (failed.length > 0) {
+    res.status(500).json({
+      message: "Failed to send some notifications",
+      failed: failed.map((f: any) => f.reason || f.value),
+    });
   } else {
-    res.status(404).json({ error: "Subscription not found" });
+    res.status(200).json({ message: "Notifications sent successfully" });
   }
 });
 
-// Send push notification to all subscribers
-app.post("/api/send-notification", async (req: Request, res: Response) => {
-  const { title, body, icon, badge, data, actions }: NotificationRequest =
-    req.body;
-
-  if (!title) {
-    return res.status(400).json({ error: "Title is required" });
-  }
-
-  const payload: NotificationPayload = {
-    title: title || "PWA Simple Notification",
-    body: body || "You have a new notification!",
-    icon: icon || "/favicon.svg",
-    badge: badge || "/favicon.svg",
-    data: data || { timestamp: Date.now() },
-    actions: actions || [
-      {
-        action: "view",
-        title: "View",
-        icon: "/favicon.svg",
-      },
-      {
-        action: "close",
-        title: "Close",
-        icon: "/favicon.svg",
-      },
-    ],
-    vibrate: [100, 50, 100],
-    requireInteraction: false,
-    silent: false,
-  };
-
-  const results: Array<{
-    success: boolean;
-    endpoint: string;
-    error?: string;
-  }> = [];
-
-  for (const subscription of subscriptions) {
-    try {
-      await webpush.sendNotification(subscription, JSON.stringify(payload));
-      results.push({ success: true, endpoint: subscription.endpoint });
-      console.log("Notification sent to:", subscription.endpoint);
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      console.error("Error sending notification:", error);
-      results.push({
-        success: false,
-        endpoint: subscription.endpoint,
-        error: errorMessage,
-      });
-
-      // Remove invalid subscriptions
-      if (
-        error instanceof Error &&
-        "statusCode" in error &&
-        error.statusCode === 410
-      ) {
-        const index = subscriptions.findIndex(
-          (sub) => sub.endpoint === subscription.endpoint
-        );
-        if (index >= 0) {
-          subscriptions.splice(index, 1);
-          console.log("Removed invalid subscription:", subscription.endpoint);
-        }
-      }
-    }
-  }
-
-  const response: SendNotificationResponse = {
-    success: true,
-    sent: results.filter((r) => r.success).length,
-    total: subscriptions.length,
-    results,
-  };
-
-  res.json(response);
-});
-
-// Get subscription count
-app.get("/api/subscriptions", (req: Request, res: Response) => {
-  res.json({ count: subscriptions.length, subscriptions });
-});
-
-// Test endpoint to send a sample notification
-app.post("/api/test-notification", async (req: Request, res: Response) => {
-  const testPayload: NotificationRequest = {
+app.get("/api/test-notification", async (req: Request, res: Response) => {
+  const testPayload: NotificationPayload = {
     title: "Test Notification",
-    body: "This is a test notification from your PWA!",
+    body: "This is a test push notification from your server!",
     icon: "/favicon.svg",
     badge: "/favicon.svg",
     data: {
-      timestamp: Date.now(),
-      type: "test",
+      url: "/",
     },
-    actions: [
-      {
-        action: "view",
-        title: "View App",
-        icon: "/favicon.svg",
-      },
-      {
-        action: "close",
-        title: "Dismiss",
-        icon: "/favicon.svg",
-      },
-    ],
   };
 
   try {
-    const result = await fetch("http://localhost:3001/api/send-notification", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(testPayload),
-    });
-
-    const data: SendNotificationResponse = await result.json();
-    res.json(data);
+    await Promise.all(
+      subscriptions.map((subscription) =>
+        webpush.sendNotification(subscription, JSON.stringify(testPayload))
+      )
+    );
+    res
+      .status(200)
+      .json({ message: "Test notification sent to all subscribers" });
   } catch {
     res.status(500).json({ error: "Failed to send test notification" });
   }
@@ -278,30 +169,61 @@ app.get("/api/health", (req: Request, res: Response) => {
   res.json(response);
 });
 
-app.listen(PORT, () => {
+// Find SSL certificates
+const homeDir = process.env.HOME || process.env.USERPROFILE;
+const findSSLCertificates = () => {
+  if (!homeDir) return null;
+
+  const commonNames = [
+    { key: "localhost-key.pem", cert: "localhost.pem" },
+    { key: "localhost+1-key.pem", cert: "localhost+1.pem" },
+    { key: "key.pem", cert: "cert.pem" },
+    { key: "server.key", cert: "server.crt" },
+  ];
+
+  for (const { key, cert } of commonNames) {
+    const keyPath = path.join(homeDir, key);
+    const certPath = path.join(homeDir, cert);
+    if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+      return { keyPath, certPath };
+    }
+  }
+  return null;
+};
+
+const sslCerts = findSSLCertificates();
+
+// Start HTTP server
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Push notification server running on port ${PORT}`);
   console.log(`📱 VAPID Public Key: ${vapidKeys.publicKey}`);
-  console.log(`🔗 Server URL: http://localhost:${PORT}`);
+  console.log(`🔗 Local URL: http://localhost:${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
   console.log(
     `🧪 Test notification: http://localhost:${PORT}/api/test-notification`
   );
 });
 
-// const httpsServer = https.createServer(
-//   {
-//     key: fs.readFileSync("/Users/beatrice/localhost-key.pem"),
-//     cert: fs.readFileSync("/Users/beatrice/localhost.pem"),
-//   },
-//   app
-// );
+// Start HTTPS server if certificates found
+if (sslCerts) {
+  const httpsServer = https.createServer(
+    {
+      key: fs.readFileSync(sslCerts.keyPath),
+      cert: fs.readFileSync(sslCerts.certPath),
+    },
+    app
+  );
 
-// httpsServer.listen(PORT, () => {
-//   console.log(`🚀 Push notification server running on port ${PORT}`);
-//   console.log(`📱 VAPID Public Key: ${vapidKeys.publicKey}`);
-//   console.log(`🔗 Server URL: http://localhost:${PORT}`);
-//   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-//   console.log(
-//     `🧪 Test notification: http://localhost:${PORT}/api/test-notification`
-//   );
-// });
+  httpsServer.listen(443, "0.0.0.0", () => {
+    console.log(`🔐 HTTPS Push notification server running on port 443`);
+    console.log(`📱 VAPID Public Key: ${vapidKeys.publicKey}`);
+    console.log(`🔗 Local URL: https://localhost:443`);
+    console.log(`🌐 Network URL: https://192.168.3.37:443`);
+    console.log(`📊 Health check: https://192.168.3.37:443/api/health`);
+    console.log(
+      `🧪 Test notification: https://192.168.3.37:443/api/test-notification`
+    );
+  });
+} else {
+  console.log("⚠️  No SSL certificates found. HTTPS server not started.");
+}
