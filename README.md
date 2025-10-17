@@ -34,13 +34,33 @@ A simple Progressive Web App (PWA) with installation support and push notificati
 
 ## Available Scripts
 
-- `pnpm run dev` - Start Vite dev server only
+### Development
+
+- `pnpm run dev` - Start Vite dev server (HTTPS if SSL configured, HTTP otherwise)
+- `pnpm run dev:http` - Start Vite dev server in HTTP mode (for iOS PWA icon testing)
+- `pnpm run dev:https` - Start Vite dev server in HTTPS mode (requires SSL certificates)
 - `pnpm run dev:full` - Start both dev server and push notification server
-- `pnpm run build` - Build the app
-- `pnpm run preview` - Preview the built app
+- `pnpm run dev:full:http` - Start both servers in HTTP mode
+- `pnpm run dev:full:https` - Start both servers in HTTPS mode
+
+### Preview
+
+- `pnpm run preview` - Preview the built app (HTTPS if SSL configured, HTTP otherwise)
+- `pnpm run preview:http` - Preview in HTTP mode (for iOS PWA icon testing)
+- `pnpm run preview:https` - Preview in HTTPS mode (requires SSL certificates)
 - `pnpm run preview:full` - Preview with push notification server
+- `pnpm run preview:full:http` - Preview with server in HTTP mode
+- `pnpm run preview:full:https` - Preview with server in HTTPS mode
+
+### Other
+
+- `pnpm run build` - Build the app
 - `pnpm run server` - Start push notification server only
+- `pnpm run server:http` - Start server in HTTP mode
+- `pnpm run server:https` - Start server in HTTPS mode
 - `pnpm run start` - Build and start in production mode
+- `pnpm run start:http` - Build and start in production mode HTTP
+- `pnpm run start:https` - Build and start in production mode HTTPS
 
 ## PWA Installation
 
