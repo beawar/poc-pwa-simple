@@ -63,21 +63,36 @@ The app includes a push notification system:
 2. **VAPID Keys:** Auto-generated for development
 3. **Test:** Use the "Send Test Notification" button
 
+## Environment Variables
+
+This project uses [dotenvx](https://dotenvx.com/) for secure environment variable management. Create a `.env` file with:
+
+```bash
+# SSL Certificate paths (for HTTPS)
+SSL_KEY_PATH=/path/to/your/private-key.pem
+SSL_CERT_PATH=/path/to/your/certificate.pem
+
+# VAPID keys for push notifications (optional - auto-generated if not set)
+VAPID_PUBLIC_KEY=your_vapid_public_key_here
+VAPID_PRIVATE_KEY=your_vapid_private_key_here
+```
+
 ## Network Access
 
 The app is configured to work on your local network:
 
-- Dev server: `http://YOUR_IP:5173`
-- Preview server: `http://YOUR_IP:4173`
-- Push server: `http://YOUR_IP:3001`
+- Dev server: `http://YOUR_IP:5173` or `https://YOUR_IP:5173` (if SSL configured)
+- Preview server: `http://YOUR_IP:4173` or `https://YOUR_IP:4173` (if SSL configured)
+- Push server: `http://YOUR_IP:3001` or `https://YOUR_IP:443` (if SSL configured)
 
 ## Production
 
 For production deployment:
 
 1. Set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` environment variables
-2. Update the server URL in `PushNotificationManager.tsx`
-3. Deploy both the built app and the server
+2. Set `SSL_KEY_PATH` and `SSL_CERT_PATH` for HTTPS
+3. Update the server URL in `PushNotificationManager.tsx`
+4. Deploy both the built app and the server
 
 ## Tech Stack
 

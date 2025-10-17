@@ -1,9 +1,12 @@
+import { config } from "@dotenvx/dotenvx";
 import cors from "cors";
 import express, { Request, Response } from "express";
-import webpush from "web-push";
 import fs from "fs";
-import path from "path";
 import https from "https";
+import webpush from "web-push";
+
+// Load environment variables with dotenvx
+config();
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -35,6 +38,14 @@ interface HealthResponse {
   timestamp: string;
   subscriptions: number;
 }
+
+interface NotificationError {
+  endpoint: string;
+  error: string;
+}
+
+type NotificationPromise = Promise<NotificationError>;
+type NotificationResult = PromiseSettledResult<NotificationError>;
 
 // Middleware
 app.use(cors());
@@ -98,36 +109,47 @@ app.post("/api/send-notification", async (req: Request, res: Response) => {
   const payload: NotificationPayload = req.body;
   console.log("Sending notification with payload:", payload);
 
-  const notificationPromises = subscriptions.map((subscription) =>
-    webpush
-      .sendNotification(subscription, JSON.stringify(payload))
-      .catch((error) => {
-        console.error("Error sending notification:", error);
-        // Remove invalid subscriptions
-        if (error.statusCode === 410) {
-          const index = subscriptions.findIndex(
-            (sub) => sub.endpoint === subscription.endpoint
-          );
-          if (index > -1) {
-            subscriptions.splice(index, 1);
-            console.log("Removed expired subscription:", subscription.endpoint);
+  const notificationPromises: NotificationPromise[] = subscriptions.map(
+    (subscription) =>
+      webpush
+        .sendNotification(subscription, JSON.stringify(payload))
+        .then(() => ({ endpoint: subscription.endpoint, error: "" }))
+        .catch((error) => {
+          console.error("Error sending notification:", error);
+          // Remove invalid subscriptions
+          if (error.statusCode === 410) {
+            const index = subscriptions.findIndex(
+              (sub) => sub.endpoint === subscription.endpoint
+            );
+            if (index > -1) {
+              subscriptions.splice(index, 1);
+              console.log(
+                "Removed expired subscription:",
+                subscription.endpoint
+              );
+            }
           }
-        }
-        return { endpoint: subscription.endpoint, error: error.message };
-      })
+          return { endpoint: subscription.endpoint, error: error.message };
+        })
   );
 
-  const results = await Promise.allSettled(notificationPromises);
+  const results: NotificationResult[] = await Promise.allSettled(
+    notificationPromises
+  );
   const failed = results.filter(
-    (result) =>
+    (
+      result
+    ): result is
+      | PromiseRejectedResult
+      | PromiseFulfilledResult<NotificationError> =>
       result.status === "rejected" ||
-      (result.status === "fulfilled" && result.value && result.value.error)
+      (result.status === "fulfilled" && result.value.error !== "")
   );
 
   if (failed.length > 0) {
     res.status(500).json({
       message: "Failed to send some notifications",
-      failed: failed.map((f: any) => f.reason || f.value),
+      failed: failed.map((f) => (f.status === "rejected" ? f.reason : f.value)),
     });
   } else {
     res.status(200).json({ message: "Notifications sent successfully" });
@@ -169,25 +191,20 @@ app.get("/api/health", (req: Request, res: Response) => {
   res.json(response);
 });
 
-// Find SSL certificates
-const homeDir = process.env.HOME || process.env.USERPROFILE;
+// Find SSL certificates from environment variables
 const findSSLCertificates = () => {
-  if (!homeDir) return null;
+  const keyPath = process.env.SSL_KEY_PATH;
+  const certPath = process.env.SSL_CERT_PATH;
 
-  const commonNames = [
-    { key: "localhost-key.pem", cert: "localhost.pem" },
-    { key: "localhost+1-key.pem", cert: "localhost+1.pem" },
-    { key: "key.pem", cert: "cert.pem" },
-    { key: "server.key", cert: "server.crt" },
-  ];
-
-  for (const { key, cert } of commonNames) {
-    const keyPath = path.join(homeDir, key);
-    const certPath = path.join(homeDir, cert);
-    if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
-      return { keyPath, certPath };
-    }
+  if (
+    keyPath &&
+    certPath &&
+    fs.existsSync(keyPath) &&
+    fs.existsSync(certPath)
+  ) {
+    return { keyPath, certPath };
   }
+
   return null;
 };
 
@@ -226,4 +243,7 @@ if (sslCerts) {
   });
 } else {
   console.log("⚠️  No SSL certificates found. HTTPS server not started.");
+  console.log(
+    "   To enable HTTPS, set SSL_KEY_PATH and SSL_CERT_PATH environment variables"
+  );
 }
