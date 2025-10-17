@@ -99,11 +99,20 @@ VAPID_PRIVATE_KEY=your_vapid_private_key_here
 
 ## Network Access
 
-The app is configured to work on your local network:
+The app is configured to work on your local network with automatic proxy forwarding:
 
-- Dev server: `http://YOUR_IP:5173` or `https://YOUR_IP:5173` (if SSL configured)
-- Preview server: `http://YOUR_IP:4173` or `https://YOUR_IP:4173` (if SSL configured)
-- Push server: `http://YOUR_IP:3001` or `https://YOUR_IP:443` (if SSL configured)
+- **Dev server**: `http://YOUR_IP:5173` or `https://YOUR_IP:5173` (if SSL configured)
+- **Preview server**: `http://YOUR_IP:4173` or `https://YOUR_IP:4173` (if SSL configured)
+- **Push server**: Runs on `localhost:3001` (automatically proxied to network clients)
+
+### Proxy Configuration
+
+Vite automatically proxies `/api/*` requests from network clients to `localhost:3001`, so:
+
+- When accessing from `localhost` → direct connection to `localhost:3001`
+- When accessing from network IP → requests are proxied through Vite to `localhost:3001`
+
+This ensures the push notification server is always accessible regardless of how you access the app.
 
 ## Production
 

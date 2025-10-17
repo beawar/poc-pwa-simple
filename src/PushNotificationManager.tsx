@@ -18,8 +18,9 @@ function getServerUrl(): string {
     return `${protocol}//localhost:${port}`;
   }
 
-  // If we're running on the network, use the same hostname and protocol
-  return `${protocol}//${window.location.hostname}:${port}`;
+  // If we're running on the network, use relative URLs so Vite proxy can handle them
+  // The proxy will forward /api requests to localhost:3001
+  return "";
 }
 
 const PushNotificationManager: React.FC<NotificationManagerProps> = ({
@@ -36,7 +37,11 @@ const PushNotificationManager: React.FC<NotificationManagerProps> = ({
 
   const getVapidKey = useCallback(async () => {
     try {
-      console.log(`🔍 Fetching VAPID key from: ${serverUrl}/api/vapid-key`);
+      const url = `${serverUrl}/api/vapid-key`;
+      console.log(`🔍 Fetching VAPID key from: ${url}`);
+      console.log(
+        `🔍 Server URL: "${serverUrl}" (empty means using relative URLs with proxy)`
+      );
 
       const response = await fetch(`${serverUrl}/api/vapid-key`, {
         method: "GET",

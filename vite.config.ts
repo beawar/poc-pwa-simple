@@ -46,6 +46,13 @@ export default defineConfig(({ mode }) => {
     server: {
       host: true, // Allow external connections
       port: 5173,
+      proxy: {
+        "/api": {
+          target: "http://localhost:3001",
+          changeOrigin: true,
+          secure: false,
+        },
+      },
       ...(sslCerts && {
         https: {
           key: fs.readFileSync(sslCerts.keyPath),
@@ -56,6 +63,13 @@ export default defineConfig(({ mode }) => {
     preview: {
       host: true, // Allow external connections
       port: 4173,
+      proxy: {
+        "/api": {
+          target: "http://localhost:3001",
+          changeOrigin: true,
+          secure: false,
+        },
+      },
       ...(sslCerts && {
         https: {
           key: fs.readFileSync(sslCerts.keyPath),
