@@ -97,6 +97,22 @@ VAPID_PUBLIC_KEY=your_vapid_public_key_here
 VAPID_PRIVATE_KEY=your_vapid_private_key_here
 ```
 
+### Generating VAPID Keys
+
+VAPID keys are required for push notifications. You can generate them using the `web-push` library:
+
+1. **Generate VAPID keys:**
+
+   ```bash
+   npx web-push generate-vapid-keys
+   ```
+
+2. **Add the keys to your `.env` file:**
+   ```bash
+   VAPID_PUBLIC_KEY=your_generated_public_key
+   VAPID_PRIVATE_KEY=your_generated_private_key
+   ```
+
 ## Network Access
 
 The app is configured to work on your local network with automatic proxy forwarding:
@@ -113,6 +129,14 @@ Vite automatically proxies `/api/*` requests from network clients to `localhost:
 - When accessing from network IP → requests are proxied through Vite to `localhost:3001`
 
 This ensures the push notification server is always accessible regardless of how you access the app.
+
+## Push Notifications on real devices
+
+For real devices, push notifications require special setup due to security restrictions:
+
+- **Local network access**: Push notifications are disabled for security reasons
+- **Solution**: Use ngrok tunnel to expose your app through a public HTTPS URL
+- **Detailed guide**: See [NGROK_TUNNEL_SETUP.md](./wiki/NGROK_TUNNEL_SETUP.md)
 
 ## Production
 
