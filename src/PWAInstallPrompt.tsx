@@ -11,6 +11,7 @@ const PWAInstallPrompt = () => {
     useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
+  const [isSafari, setIsSafari] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
   const [userEngaged, setUserEngaged] = useState(false);
 
@@ -19,7 +20,10 @@ const PWAInstallPrompt = () => {
     const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     const isAndroid = /Android/.test(navigator.userAgent);
     const isChrome = /Chrome/.test(navigator.userAgent);
+    const isSafariBrowser =
+      /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
     setIsIOS(iOS);
+    setIsSafari(isSafariBrowser);
 
     // Check if already installed (standalone mode)
     const standalone =
@@ -35,6 +39,7 @@ const PWAInstallPrompt = () => {
       console.log("  - Is iOS:", iOS);
       console.log("  - Is Android:", isAndroid);
       console.log("  - Is Chrome:", isChrome);
+      console.log("  - Is Safari:", isSafariBrowser);
       console.log("  - Is Standalone:", standalone);
       console.log("  - Protocol:", location.protocol);
       console.log("  - Hostname:", location.hostname);
@@ -125,6 +130,14 @@ const PWAInstallPrompt = () => {
       return () => clearTimeout(timer);
     }
 
+    // For Safari (desktop), show instructions after a delay
+    if (isSafariBrowser && !iOS && !standalone) {
+      const timer = setTimeout(() => {
+        setShowInstallPrompt(true);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+
     // For Android/Chrome, show manual prompt if beforeinstallprompt doesn't fire
     if (isAndroid && isChrome && !standalone) {
       const timer = setTimeout(() => {
@@ -145,7 +158,7 @@ const PWAInstallPrompt = () => {
       document.removeEventListener("scroll", handleUserEngagement);
       document.removeEventListener("keydown", handleUserEngagement);
     };
-  }, []);
+  }, [userEngaged]);
 
   const handleInstallClick = async () => {
     if (deferredPrompt) {
@@ -159,13 +172,13 @@ const PWAInstallPrompt = () => {
 
   const handleDismiss = () => {
     setShowInstallPrompt(false);
-    localStorage.setItem("pwa-install-dismissed", "true");
+    // localStorage.setItem("pwa-install-dismissed", "true");
   };
 
   // Don't show if already installed or dismissed
   if (
-    isStandalone ||
-    localStorage.getItem("pwa-install-dismissed") === "true"
+    isStandalone /* ||
+    localStorage.getItem("pwa-install-dismissed") === "true" */
   ) {
     return null;
   }
@@ -197,6 +210,21 @@ const PWAInstallPrompt = () => {
                   <span className="pwa-icon">➕</span>
                 </li>
                 <li>Tap "Add" to confirm</li>
+              </ol>
+            </div>
+          ) : isSafari ? (
+            <div className="pwa-safari-instructions">
+              <p>To install this app on Safari:</p>
+              <ol>
+                <li>
+                  Click the Share button <span className="pwa-icon">📤</span> in
+                  the Safari toolbar
+                </li>
+                <li>
+                  Click "Add to Home Screen"{" "}
+                  <span className="pwa-icon">➕</span>
+                </li>
+                <li>Click "Add" to confirm</li>
               </ol>
             </div>
           ) : (

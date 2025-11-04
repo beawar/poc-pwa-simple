@@ -5,6 +5,7 @@
 import { cleanupOutdatedCaches, precacheAndRoute } from "workbox-precaching";
 import { registerRoute } from "workbox-routing";
 import { NetworkFirst } from "workbox-strategies";
+import { clientsClaim } from "workbox-core";
 
 declare const self: ServiceWorkerGlobalScope;
 
@@ -16,6 +17,10 @@ precacheAndRoute(self.__WB_MANIFEST);
 
 // Example: Network First strategy for HTML files
 registerRoute(({ request }) => request.mode === "navigate", new NetworkFirst());
+
+// manage automatic updates https://vite-pwa-org.netlify.app/guide/inject-manifest.html#auto-update-behavior
+self.skipWaiting();
+clientsClaim();
 
 // Push notification example:
 self.addEventListener("push", (event) => {
